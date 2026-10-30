@@ -1,0 +1,292 @@
+// STATS (src/events.ts, src/stats.ts, src/stats-sources.ts, src/stats-service.ts): the tags, the free/paid rule, the sums.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { eventsOfDay, parseEvent, recordEvent, type ArcadeEvent, type EventStore } from '../src/events.js';
+import { handleEvents, handleStats } from '../src/stats-service.js';
+import { buildStats, classify, LAUNCH, paidStarts, windows } from '../src/stats.js';
+import { refreshStats, type StatsDeps } from '../src/stats-sources.js';
+
+const FR = '5932be45-7ccb-483a-916d-0dcebff40ca2', UB = 'c5285ae3-512e-464a-aceb-17571e1fe3e9', DSR = '8617e311-f5d4-4e04-9010-19298f2ff9a0';
+const GAMES3 = [
+  { id: FR, title: 'FULL ROW', origin: 'https://yfq52eu3.srstudio.dev', tag: 'full-row' },
+  { id: UB, title: 'UNBREAKABLE', origin: 'https://7x2phv5j.srstudio.dev', tag: 'unbreakable' },
+  { id: DSR, title: 'Dirty Signals Radio', origin: 'https://sy3mgnnh.srstudio.dev' },
+];
+const HOLDER = '0xaaaa000000000000000000000000000000000342', OTHER = '0xbbbb000000000000000000000000000000000001';
+const at = (iso: string): number => Date.parse(iso);
+
+function memoryStore(): EventStore & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return {
+    data,
+    getText: async (k) => data.get(k) ?? null,
+    set: async (k, v) => { data.set(k, v); },
+    list: async (prefix) => [...data.keys()].filter((k) => k.startsWith(prefix)).sort(),
+  };
+}
+
+test('free versus paid: a holder\'s first 3 paid starts of the week are free, the 4th is paid; a non-holder\'s are all paid', () => {
+  const start = (w: string, iso: string, run: string): ArcadeEvent => ({ t: at(iso), e: 'paid_start', g: 'full-row', w, x: { run } });
+  const events = [
+    start(HOLDER, '2026-10-27T15:00:00Z', 'r1'), start(HOLDER, '2026-10-27T15:10:00Z', 'r2'),
+    start(HOLDER, '2026-10-27T15:10:30Z', 'r2'),                   // the same run tagged again after a reload
+    start(HOLDER, '2026-10-28T09:00:00Z', 'r3'), start(HOLDER, '2026-10-28T10:00:00Z', 'r4'),
+    start(OTHER, '2026-10-27T16:00:00Z', 'r5'),
+    start(HOLDER, '2026-10-30T15:30:00Z', 'r6'),                   // a new week (Friday 15:00 Lisbon): free again
+    { t: at('2026-10-27T17:00:00Z'), e: 'paid_start', g: 'unbreakable' } as ArcadeEvent,   // no wallet
+  ];
+  const kinds = classify(paidStarts(events), new Set([HOLDER]));
+  assert.deepEqual(kinds.map((k) => `${k.event.x?.run ?? '-'}:${k.kind}`), ['r1:free', 'r2:free', 'r5:paid', '-:unknown', 'r3:free', 'r4:paid', 'r6:free']);
+});
+
+test('events: checked, stamped, one blob each, folded into the day\'s file once', async () => {
+  assert.throws(() => parseEvent({ event: 'card_view' }, 0), /unknown event/);         // the service's own events
+  assert.throws(() => parseEvent({ event: 'hub_view', cookie: 'x' }, 0), /unexpected field cookie/);
+  assert.throws(() => parseEvent({ event: 'paid_start', wallet: 'me' }, 0), /wallet/);
+  const e = parseEvent({ event: 'paid_start', game: 'full-row', wallet: HOLDER.toUpperCase().replace('0X', '0x'), extra: { run: 'abc', creditsBefore: 3 } }, at('2026-10-27T15:00:00Z'));
+  assert.deepEqual(e, { t: at('2026-10-27T15:00:00Z'), e: 'paid_start', g: 'full-row', w: HOLDER, x: { run: 'abc', creditsBefore: 3 } });
+
+  const store = memoryStore();
+  await recordEvent(store, e);
+  await recordEvent(store, { t: at('2026-10-27T15:01:00Z'), e: 'hub_view' });
+  const first = await eventsOfDay(store, '2026-10-27');
+  assert.equal(first.length, 2);
+  assert.equal(store.data.get('2026-10-27.ndjson')?.trim().split('\n').length, 2);
+  await recordEvent(store, { t: at('2026-10-27T15:02:00Z'), e: 'game_open', g: 'unbreakable' });
+  const again = await eventsOfDay(store, '2026-10-27');
+  assert.deepEqual(again.map((x) => x.e), ['paid_start', 'hub_view', 'game_open']);
+  assert.equal((await eventsOfDay(store, '2026-10-27')).length, 3);                    // folding twice changes nothing
+});
+
+test('POST /api/events: only from the arcade\'s pages, 204, no body', async () => {
+  const store = memoryStore();
+  const post = (origin: string | null, body: unknown): Promise<Response> => handleEvents(new Request('https://cards.test/api/events', {
+    method: 'POST', body: JSON.stringify(body), headers: origin ? { origin, 'content-type': 'text/plain' } : {},
+  }), { events: store, now: () => at('2026-10-27T15:00:00Z') });
+  assert.equal((await post('https://yfq52eu3.srstudio.dev', { event: 'game_open', game: 'full-row' })).status, 204);
+  assert.equal((await post('https://evil.example', { event: 'game_open' })).status, 403);
+  assert.equal((await post(null, { event: 'game_open' })).status, 403);
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'nope' })).status, 400);
+  assert.equal([...store.data.keys()].length, 1);
+});
+
+test('the sums: official plays, free/paid, players, packs, the funnel, three windows', () => {
+  const now = at('2026-10-27T19:00:00Z');
+  const ev = (iso: string, e: ArcadeEvent['e'], more: Partial<ArcadeEvent> = {}): ArcadeEvent => ({ t: at(iso), e, ...more });
+  const events: ArcadeEvent[] = [
+    ev('2026-10-27T14:10:00Z', 'hub_view'), ev('2026-10-27T14:11:00Z', 'hub_view'), ev('2026-10-27T14:12:00Z', 'hub_view'),
+    ev('2026-10-27T14:13:00Z', 'game_open', { g: 'full-row' }), ev('2026-10-27T14:14:00Z', 'game_open', { g: 'unbreakable' }),
+    ev('2026-10-27T14:15:00Z', 'practice_start', { g: 'full-row' }),
+    ...[1, 2, 3, 4].map((i) => ev(`2026-10-27T15:0${i}:00Z`, 'paid_start', { g: 'full-row', w: HOLDER, x: { run: `h${i}` } })),
+    ev('2026-10-27T16:00:00Z', 'paid_start', { g: 'unbreakable', w: OTHER, x: { run: 'o1' } }),
+    ev('2026-10-27T16:05:00Z', 'paid_end', { g: 'unbreakable', w: OTHER, s: 400 }),
+    ev('2026-10-27T16:06:00Z', 'post_on_x', { g: 'unbreakable', w: OTHER }),
+    ev('2026-10-27T16:07:00Z', 'card_create', { g: 'unbreakable', c: 'AAAAAAAAAAAAAAAA' }),
+    ev('2026-10-27T16:30:00Z', 'card_view', { c: 'AAAAAAAAAAAAAAAA', x: { fromX: true } }),
+    ev('2026-10-27T16:31:00Z', 'card_view', { c: 'AAAAAAAAAAAAAAAA', x: { fromX: false } }),
+  ];
+  const usage = { games: { [FR]: { started: 4, completed: 3, credits: 4 }, [UB]: { started: 2, completed: 2, credits: 2 }, [DSR]: { started: 1, completed: 1, credits: 1 } }, total: { started: 7, completed: 6, credits: 7 } };
+  const s = buildStats({
+    now, games: GAMES3, events, usage: { today: usage, week: usage, launch: usage, days: { '2026-10-27': usage } }, holders: new Set([HOLDER]),
+    packs: [{ t: at('2026-10-27T15:35:00Z'), wallet: OTHER, name: 'tylerguyot.eth', eth: 0.005, packs: 1 }],
+    leaderboards: { [UB]: { today: [{ name: 'tylerguyot.eth', score: 400, at: null }] } }, pot: '0.0150',
+    people: { names: 190, withSprite: 6, unmatched: 3, lastSpriteAt: null, mirrored: { a: '2026-10-27T15:00:00Z', b: '2026-10-26T15:00:00Z' } }, sources: {},
+  });
+  const today = s.windows.today as any;
+  assert.deepEqual(windows(now).map((w) => [w.key, new Date(w.from).toISOString()]), [['today', '2026-10-27T00:00:00.000Z'], ['week', '2026-10-21T23:00:00.000Z'], ['launch', '2026-10-27T14:00:00.000Z']]);
+  assert.equal(LAUNCH, at('2026-10-27T14:00:00Z'));
+  const fr = today.plays.games[FR], ub = today.plays.games[UB], dsr = today.plays.games[DSR], tot = today.plays.total;
+  assert.deepEqual(s.games.map((g) => g.title), ['FULL ROW', 'UNBREAKABLE', 'Dirty Signals Radio']);
+  assert.deepEqual([dsr.started, dsr.completed, dsr.free, dsr.paid, dsr.unattributed, dsr.practice], [1, 1, 0, 0, 1, 0]);   // an artist's game: not tagged by us
+  assert.deepEqual([fr.started, fr.completed, fr.abandoned, fr.free, fr.paid, fr.practice, fr.official], [4, 3, 1, 3, 1, 1, true]);
+  assert.deepEqual([ub.started, ub.free, ub.paid, ub.unattributed, ub.diff], [2, 0, 1, 1, -1]);       // one start not tagged
+  assert.deepEqual([tot.started, tot.completed, tot.free, tot.paid], [7, 6, 3, 2]);
+  assert.deepEqual([today.players.wallets, today.players.holders, today.players.nonHolders, today.players.newToday], [2, 1, 1, 2]);
+  assert.deepEqual(today.players.playsPerPlayer, { avg: 2.5, max: 4 });
+  assert.deepEqual([today.money.packs, today.money.conversion], [1, 50]);                    // 1 buyer of the 2 paying players
+  assert.deepEqual([today.share.cards, today.share.postOnX, today.share.cardViews, today.share.fromX], [1, 1, 2, 1]);
+  assert.equal(today.sprites, 1);
+  assert.deepEqual(s.funnel.map((f) => [f.count, f.pct]), [[3, null], [2, 66.7], [1, 50], [7, 700], [6, 85.7], [1, 16.7], [1, 100]]);
+  assert.deepEqual(s.days, [{ day: '2026-10-27', plays: 7, official: true, players: 2, packs: 1, cards: 1, sprites: 1 }]);
+  assert.equal(s.hours[15]?.paid, 4);
+  assert.deepEqual(s.credits, { granted: 570, bought: 50, consumed: 7, inCirculation: 613 });
+  assert.equal(s.now.weekEndsAt, '2026-10-30T15:00:00.000Z');
+});
+
+test('refreshStats without a token: the tags and the other sources still count, the page and stats.json answer', async () => {
+  const events = memoryStore(), kept = new Map<string, string>();
+  await recordEvent(events, { t: at('2026-10-27T15:00:00Z'), e: 'paid_start', g: 'full-row', w: HOLDER, x: { run: 'a' } });
+  await recordEvent(events, { t: at('2026-10-27T15:01:00Z'), e: 'paid_start', g: 'full-row', w: HOLDER, x: { run: 'b', test: 'check' } });   // a check, not counted
+  const fakeFetch = (async (url: string) => {
+    if (url.startsWith('https://eth.blockscout.com/')) return Response.json({ items: [
+      { timestamp: '2026-10-27T15:35:00Z', value: '5000000000000000', result: 'success', from: { hash: OTHER, ens_domain_name: 'tylerguyot.eth' }, to: { hash: '0xb6ede0158e1792ed25e1367edeec05a824d7c9ad' } },
+      { timestamp: '2026-10-27T15:40:00Z', value: '5000000000000000', result: 'success', from: { hash: '0xb6ede0158e1792ed25e1367edeec05a824d7c9ad' }, to: { hash: OTHER } },   // a payout, out
+      { timestamp: '2026-10-21T10:00:00Z', value: '5000000000000000', result: 'success', from: { hash: HOLDER, ens_domain_name: null }, to: { hash: '0xb6ede0158e1792ed25e1367edeec05a824d7c9ad' } },
+    ], next_page_params: null });
+    if (url.includes('/scoring/leaderboard')) return Response.json({ entries: [{ score: '515', achievedAt: '2026-10-27T16:33:25Z', player: { ensName: 'johnkarp.eth' } }] });
+    return new Response('no', { status: 404 });
+  }) as typeof fetch;
+  const people = { getText: async (k: string) => (k === 'people.json' ? JSON.stringify([{ panel: 342, name: 'KARP', wallet: HOLDER, sprite: null }]) : null), getBytes: async () => null, set: async () => {} };
+  const deps: StatsDeps = {
+    fetch: fakeFetch, now: () => at('2026-10-27T19:00:00Z'), token: undefined, events, people,
+    pot: { store: { get: async () => null, set: async () => {} }, balance: async () => 15_000_000_000_000_000n },
+    store: { getText: async (k) => kept.get(k) ?? null, set: async (k, v) => { kept.set(k, v); } },
+  };
+  const s = await refreshStats(deps);
+  assert.equal(s.sources.usage, 'no RARE_PROFILE_TOKEN');
+  assert.equal(s.now.pot, '0.0150');
+  const today = s.windows.today as any;
+  assert.deepEqual([today.plays.total.started, today.plays.total.free, today.plays.total.official], [1, 1, false]);
+  assert.deepEqual(today.money.buyers.map((b: { name: string }) => b.name), ['tylerguyot.eth']);   // John's test pack of the 21st is before the launch
+  assert.equal(today.players.leaderboards[UB].top3[0].name, 'johnkarp.eth');
+  assert.ok(kept.get('stats.json'));
+  const page = await handleStats(new Request('https://cards.test/stats'), deps);
+  const html = await page.text();
+  assert.match(html, /Arcade Stats/);
+  assert.match(html, /tylerguyot\.eth/);
+  assert.match(html, /no RARE_PROFILE_TOKEN/);
+  const json = await (await handleStats(new Request('https://cards.test/stats.json'), deps)).json() as { generatedAt: string };
+  assert.equal(json.generatedAt, '2026-10-27T19:00:00.000Z');
+});
+
+test('a card\'s page opened is tagged (from X when the referer is t.co / x.com), a link preview bot is not', async () => {
+  const { handle } = await import('../src/service.js');
+  const card = { kind: 'bounce', names: [], people: 0, score: 10, practice: false };
+  const files = new Map<string, unknown>([['AAAAAAAAAAAAAAAA.json', card]]);
+  const tags: ArcadeEvent[] = [];
+  const deps = {
+    store: { get: (async (k: string) => files.get(k) ?? null) as never, set: async () => undefined },
+    wallNames: async () => [], leaderboard: async () => [], tag: async (e: ArcadeEvent) => { tags.push(e); }, now: () => 1,
+  };
+  const open = (headers: Record<string, string>): Promise<Response> => handle(new Request('https://cards.test/r/AAAAAAAAAAAAAAAA', { headers }), deps);
+  assert.equal((await open({ referer: 'https://t.co/abc', 'user-agent': 'Mozilla/5.0 (iPhone)' })).status, 200);
+  await open({ 'user-agent': 'Mozilla/5.0' });
+  await open({ 'user-agent': 'Twitterbot/1.0' });
+  assert.deepEqual(tags.map((t) => [t.e, t.g, t.c, t.x?.fromX]), [['card_view', 'unbreakable', 'AAAAAAAAAAAAAAAA', true], ['card_view', 'unbreakable', 'AAAAAAAAAAAAAAAA', false]]);
+});
+
+test('with a token: one line per app of the group, named by the usage report or its page, the official counts', async () => {
+  const kept = new Map<string, string>(), asked: string[] = [];
+  const group = { id: '60faaf46-ba4b-460c-a82a-adb852371a94', slug: 'wall-arcade-nfc-50', displayName: 'THE WALL ARCADE credits', chainId: 1, currency: 'ETH', tokenAddress: null,
+    treasuryAddress: '0xb6ede0158e1792ed25e1367edeec05a824d7c9ad', packPriceAtomic: '5000000000000000', packCredits: 50, purchasesPaused: false, newUsesPaused: false, paymentConfigId: null,
+    apps: [FR, UB, '62a44855-272e-4b15-bc3b-f5fc803129ad', DSR, 'feedbeef-0000-4000-8000-000000000000'].map((productId, i) => ({ productId, origin: ['https://yfq52eu3.srstudio.dev', 'https://7x2phv5j.srstudio.dev', 'https://fgud7mby.srstudio.dev', 'https://sy3mgnnh.srstudio.dev', 'https://zzzzzzzz.srstudio.dev'][i], creditCost: 1 })) };
+  const fakeFetch = (async (url: string, init?: RequestInit) => {
+    if (url === 'https://studio.superrare.com/auth/cli/exchange') { asked.push('exchange'); return Response.json(JSON.parse(String(init?.body)).token === 'slk_test' ? { sessionToken: 'jwt_test' } : {}); }
+    if (url.startsWith('https://studio.superrare.com')) {
+      if ((init?.headers as Record<string, string>).Authorization !== 'Bearer jwt_test') return Response.json({ error: 'auth' }, { status: 401 });
+      const body = JSON.parse(String(init?.body)) as { action: string; from?: string };
+      asked.push(body.action);
+      if (body.action === 'get-credit-group') return Response.json({ group });
+      if (body.action === 'get-credit-group-usage') return Response.json({ groupId: group.id, from: body.from, to: body.from, page: { hasMore: false, nextCursor: null },
+        totals: { capturedPlays: '7', completedPlays: '6', creditsConsumed: '7' },
+        games: [{ appId: FR, title: 'FULL ROW', capturedPlays: '2', completedPlays: '2', creditsConsumed: '2' }, { appId: UB, title: 'UNBREAKABLE', capturedPlays: '4', completedPlays: '3', creditsConsumed: '4' },
+          { appId: DSR, title: 'Dirty Signals Radio', capturedPlays: '1', completedPlays: '1', creditsConsumed: '1' }] });
+    }
+    if (url === 'https://zzzzzzzz.srstudio.dev/') return new Response('<title>Next Game · Someone · The Wall Arcade</title>');
+    if (url === 'https://fgud7mby.srstudio.dev/') return new Response('<title>App not found — SuperRare Studio</title>', { status: 404 });   // TAP THE NAME, buried
+    if (url.includes('/scoring/leaderboard')) return url.startsWith('https://sy3mgnnh') ? new Response('no', { status: 404 }) : Response.json({ entries: [] });
+    if (url.startsWith('https://eth.blockscout.com/')) return new Response('Internal server error', { status: 500 });
+    return new Response('no', { status: 404 });
+  }) as typeof fetch;
+  kept.set('packs.json', JSON.stringify({ at: at('2026-10-27T18:45:00Z'), list: [{ t: at('2026-10-27T15:35:11Z'), wallet: OTHER, name: 'tylerguyot.eth', eth: 0.005, packs: 1 }] }));
+  const deps: StatsDeps = {
+    fetch: fakeFetch, now: () => at('2026-10-27T19:00:00Z'), token: 'slk_test', events: memoryStore(),
+    people: { getText: async () => null, getBytes: async () => null, set: async () => {} },
+    pot: { store: { get: async () => null, set: async () => {} }, balance: async () => 0n },
+    store: { getText: async (k) => kept.get(k) ?? null, set: async (k, v) => { kept.set(k, v); } },
+  };
+  const s = await refreshStats(deps);
+  assert.equal(s.sources.usage, 'ok');
+  assert.equal(s.sources.leaderboards, 'none for Dirty Signals Radio');
+  assert.match(s.sources.packs as string, /blockscout HTTP 500: last list read 2026-10-27T18:45:00.000Z shown/);
+  assert.equal((s.windows.today as any).money.packs, 1);                                 // Blockscout down: the last packs, not 0
+  assert.deepEqual(s.games.map((g) => g.title), ['FULL ROW', 'UNBREAKABLE', 'Dirty Signals Radio', 'Next Game']);
+  const today = s.windows.launch as any;
+  assert.deepEqual(Object.values(today.plays.games).map((r: any) => [r.started, r.completed, r.official]), [[2, 2, true], [4, 3, true], [1, 1, true], [0, 0, true]]);
+  assert.deepEqual([today.plays.total.started, today.plays.total.completed], [7, 6]);
+  assert.ok(asked.includes('get-credit-group'));
+  assert.equal(asked.filter((a) => a === 'exchange').length, 1);                        // one session for the whole refresh
+  assert.equal(JSON.parse(kept.get('games.json') ?? '{}')['feedbeef-0000-4000-8000-000000000000'], 'Next Game');
+  // the group, kept for the card service: its pages and its games (cards/src/group.ts)
+  assert.deepEqual(JSON.parse(kept.get('group.json') ?? '{}').apps.map((a: any) => [a.origin, a.title]), [['https://yfq52eu3.srstudio.dev', 'FULL ROW'], ['https://7x2phv5j.srstudio.dev', 'UNBREAKABLE'],
+    ['https://fgud7mby.srstudio.dev', 'TAP THE NAME'], ['https://sy3mgnnh.srstudio.dev', 'Dirty Signals Radio'], ['https://zzzzzzzz.srstudio.dev', 'Next Game']]);
+  const html = await (await handleStats(new Request('https://cards.test/stats'), deps)).text();
+  assert.match(html, /<th>Dirty Signals Radio<\/th>/);
+  assert.match(html, /<th>Next Game<\/th>/);
+  assert.doesNotMatch(html, /slk_test/);
+});
+
+test('this week is the leaderboard\'s week (src/shell/week.ts): week 1 to Friday 30 Oct 15:00, then Friday 15:00 to Friday 15:00', async () => {
+  const games = await import('../../src/shell/week.js');
+  for (const iso of ['2026-10-27T19:00:00Z', '2026-10-30T14:59:00Z', '2026-10-30T15:00:00Z', '2026-11-04T12:00:00Z', '2026-11-06T15:30:00Z']) {
+    const week = windows(at(iso)).find((w) => w.key === 'week') as { from: number; to: number };
+    const theirs = games.lisbonWeek(at(iso));
+    assert.deepEqual([new Date(week.from).toISOString(), new Date(week.to).toISOString()], [theirs.from, theirs.to], iso);
+  }
+  const later = windows(at('2026-11-04T12:00:00Z')).find((w) => w.key === 'week') as { from: number; to: number };
+  assert.deepEqual([new Date(later.from).toISOString(), new Date(later.to).toISOString()], ['2026-10-30T15:00:00.000Z', '2026-11-06T15:00:00.000Z']);
+  const s = buildStats({ now: at('2026-11-04T12:00:00Z'), games: [], events: [], usage: {}, holders: new Set(), packs: [], leaderboards: {}, pot: null, people: null, sources: {} });
+  assert.equal((s.windows.week as any).to, '2026-11-06T15:00:00.000Z');                 // its real end, not "now"
+});
+
+test('the credit group as /stats last read it opens the card service: its pages, its games (cards/src/group.ts), ours always', async () => {
+  const { groupOf, OUR_ORIGINS } = await import('../src/group.js');
+  const { handle } = await import('../src/service.js');
+  const ARTIST = 'https://k6ag9vxz.srstudio.dev', BREW = '1c10c96c-bf88-471c-88af-7f23a992a7ea';
+  let file: string | null = '[]', reads = 0, clock = at('2026-10-28T13:00:00Z');
+  const group = groupOf({ getText: async () => { reads++; return file; } }, () => clock);
+  const events = memoryStore();
+  const post = (origin: string, body: unknown = { event: 'game_open' }): Promise<Response> => handleEvents(new Request('https://cards.test/api/events', {
+    method: 'POST', body: JSON.stringify(body), headers: { origin, 'content-type': 'text/plain' },
+  }), { events, now: () => clock, group });
+  // an empty list: our pages only (the hub included) and our two games
+  for (const o of OUR_ORIGINS) assert.equal((await post(o)).status, 204, o);
+  assert.equal((await post(ARTIST)).status, 403);
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'click_play', game: BREW })).status, 400);
+  // a list as the stats refresh once stored it (odd entries ignored); within the minute the old list still holds, then the new one
+  file = JSON.stringify({ at: '2026-10-28T13:00:00Z', apps: [{ id: '5932be45-7ccb-483a-916d-0dcebff40ca2', origin: 'https://yfq52eu3.srstudio.dev', title: 'FULL ROW' },
+    { id: BREW, origin: ARTIST, title: 'THE MORNING BREW' }, { id: 'nope', origin: 'https://a.srstudio.dev', title: 'x' }, { id: '00000000-0000-4000-8000-000000000000', origin: 'javascript:alert(1)' }] });
+  assert.equal((await post(ARTIST)).status, 403);
+  clock += 61_000;
+  const ok = await post(ARTIST);
+  assert.equal([ok.status, ok.headers.get('access-control-allow-origin')].join(' '), `204 ${ARTIST}`);
+  assert.equal((await post('https://6972mvu4.srstudio.dev')).status, 204);           // the hub: not in the group, still ours
+  assert.equal((await post('https://a.srstudio.dev')).status, 403);
+  // the hub's PLAY sends the app id: an artist's stays its id, ours becomes its key (as our games tag themselves)
+  const before = events.data.size;
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'click_play', game: BREW })).status, 204);
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'click_play', game: '5932be45-7ccb-483a-916d-0dcebff40ca2' })).status, 204);
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'click_play', game: '00000000-0000-4000-8000-000000000000' })).status, 400);
+  assert.equal((await post('https://6972mvu4.srstudio.dev', { event: 'click_play', game: 'dirty-signals-radio' })).status, 400);   // no name in the code any more
+  const fresh = [...events.data.entries()].filter(([k]) => k.startsWith('raw/')).slice(before - 0).map(([, v]) => JSON.parse(v as string));
+  assert.deepEqual(fresh.filter((e) => e.e === 'click_play').map((e) => e.g), [BREW, 'full-row']);
+  // an artist's own page: its tags are its game's, whatever it names it
+  assert.equal((await post(ARTIST, { event: 'game_open', game: 'morning-brew' })).status, 204);
+  const last = [...events.data.entries()].filter(([k]) => k.startsWith('raw/')).map(([, v]) => JSON.parse(v as string)).pop();
+  assert.deepEqual([last.e, last.g], ['game_open', BREW]);
+  assert.equal(reads, 2);                                                             // once a minute, not once a request
+  // the cards: the same list for the CORS of POST /api/cards and its preflight, and a board card of an artist's game
+  const asked: string[] = [], stored = new Map<string, unknown>();
+  const cards = {
+    store: { get: async (k: string, type: string) => { const v = stored.get(k); return v === undefined ? null : type === 'json' ? JSON.parse(v as string) : v; }, set: async (k: string, v: unknown) => { stored.set(k, v); } } as any, wallNames: async () => [],
+    leaderboard: async (g: { url: string; appId: string }) => { asked.push(`${g.url} ${g.appId}`); return [{ rank: 1, score: '28462', player: { displayName: '0x62ec00000000000000000000000000000000ad3f', ensName: null } }]; },
+    group,
+  };
+  const pre = await handle(new Request('https://cards.test/api/cards', { method: 'OPTIONS', headers: { origin: ARTIST } }), cards);
+  assert.equal(pre.headers.get('access-control-allow-origin'), ARTIST);
+  const card = await handle(new Request('https://cards.test/api/cards', { method: 'POST', body: JSON.stringify({ kind: 'board', game: BREW }), headers: { origin: ARTIST } }), cards);
+  assert.equal(card.status, 200);
+  assert.deepEqual(asked, [`${ARTIST}/ ${BREW}`]);
+  const id = ((await card.json()) as { id: string }).id;
+  assert.deepEqual(JSON.parse(stored.get(`${id}.json`) as string), { kind: 'board', game: BREW, title: 'THE MORNING BREW', url: `${ARTIST}/`, rows: [{ rank: 1, name: '0x62ec…ad3f', score: 28462 }] });
+  const page = await (await handle(new Request(`https://cards.test/r/${id}`, { headers: { 'user-agent': 'Twitterbot' } }), cards)).text();
+  assert.match(page, /THE MORNING BREW · THE WALL ARCADE/);
+  assert.match(page, /url=https:\/\/k6ag9vxz\.srstudio\.dev\//);
+  const unknown = await handle(new Request('https://cards.test/api/cards', { method: 'POST', body: JSON.stringify({ kind: 'board', game: '00000000-0000-4000-8000-000000000000' }), headers: { origin: ARTIST } }), cards);
+  assert.equal(unknown.status, 400);
+  const other = await handle(new Request('https://cards.test/api/cards', { method: 'POST', body: '{', headers: { origin: 'https://evil.example' } }), cards);
+  assert.equal(other.headers.get('access-control-allow-origin'), null);
+  // the store unreadable: ours
+  const broken = groupOf({ getText: async () => { throw new Error('blobs down'); } });
+  assert.deepEqual([...(await broken()).origins], OUR_ORIGINS);
+});

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>THE WALL ARCADE</title>
+<meta name="description" content="Play arcade games built on the names of a real wall in Lisbon. Every paid play feeds the jackpot.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=DotGothic16&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* THE WALL ARCADE, player page, from the Claude Design mockup "The Wall Arcade": paper #FBF8EC, ink #14161F, blue
+   #3F4BA2, highlight yellow #FFF8A7; Anton for titles, DotGothic16 for subtitles and buttons, IBM Plex Mono for text;
+   2 px borders, no rounding. Mobile first: everything stacks in the same order. */
+:root{--paper:#FBF8EC;--ink:#14161F;--blue:#3F4BA2;--yellow:#FFF8A7;--grey:#464A5E;
+  --anton:Anton,Impact,sans-serif;--dot:'DotGothic16',monospace;--mono:'IBM Plex Mono',ui-monospace,monospace;--padx:clamp(16px,4vw,48px)}
+*{box-sizing:border-box;border-radius:0}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0;background:var(--paper);color:var(--ink)}
+body{font-family:var(--mono);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--blue)}a:hover{color:var(--ink)}
+::selection{background:var(--yellow);color:var(--ink)}
+p,h1,h2,h3{margin:0}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+.wrap{max-width:1280px;margin:0 auto}
+.lbl{font:500 12px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey)}
+.anton{font-family:var(--anton);font-weight:400;text-transform:uppercase;letter-spacing:-.01em}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:48px;padding:12px 28px;border:2px solid var(--blue);background:var(--blue);color:var(--paper);
+  text-decoration:none;font:400 24px/1 var(--dot);cursor:pointer}
+.btn:hover{background:var(--paper);color:var(--blue)}
+.btn.dashed{background:transparent;color:var(--blue);border-style:dashed}
+.btn.dashed:hover{background:var(--blue);color:var(--paper)}
+section{padding:clamp(48px,7vw,104px) var(--padx)}
+
+/* 1. nav */
+nav{position:sticky;top:0;z-index:20;background:#FBF8ECf2;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border-bottom:2px solid var(--blue);
+  padding:0 var(--padx);height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+.brand i{width:14px;height:14px;background:var(--blue);display:block}
+.brand span{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.links{display:flex;gap:clamp(12px,3vw,32px)}
+.links a{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey);text-decoration:none}
+.links a:hover{color:var(--blue)}
+.navr{display:flex;align-items:center;gap:10px}
+.navr .btn{font-size:18px;padding:10px 22px;min-height:44px}
+.info{width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;border:2px solid var(--blue);background:var(--paper);color:var(--blue);font:400 20px/1 var(--dot);cursor:pointer;padding:0}
+.info:hover{background:var(--blue);color:var(--paper)}
+
+/* 2. hero */
+.hero{display:grid;grid-template-columns:1fr;gap:clamp(32px,5vw,72px);align-items:center;padding-top:clamp(40px,8vw,120px)}
+.hero .kicker{font:400 clamp(18px,2.2vw,26px)/1.2 var(--dot);color:var(--blue)}
+.hero h1{margin-top:18px;color:var(--blue);font-size:clamp(64px,11vw,156px);line-height:.88;text-wrap:balance}
+.hero .base{margin-top:22px;font-size:clamp(15px,1.4vw,18px);line-height:1.5;max-width:44ch}
+.hero .base span{display:block}
+.hero .act{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:28px}
+.hero .act .btn{font-size:clamp(20px,5.4vw,28px);padding:16px clamp(18px,4vw,36px);white-space:nowrap}
+.live{display:flex;align-items:center;gap:10px}
+.live i{width:8px;height:8px;background:var(--blue);display:inline-block;animation:blink 1.2s steps(1) infinite}
+.live b{color:var(--ink);font-weight:600}
+.frame{position:relative;border:2px solid var(--blue);padding:10px;background:var(--paper)}
+.frame video{display:block;width:100%;aspect-ratio:1;object-fit:cover;background:var(--ink)}
+.sound{position:absolute;right:20px;bottom:20px;min-height:40px;padding:8px 14px;border:2px solid var(--paper);background:var(--blue);color:var(--paper);font:400 16px/1 var(--dot);cursor:pointer}
+.sound:hover{background:var(--paper);color:var(--blue);border-color:var(--blue)}
+
+/* 3. the games */
+.games{border-top:2px solid var(--blue)}
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:32px}
+.sec-h h2{font-size:clamp(40px,6vw,84px);line-height:.9}
+.row{display:grid;grid-template-columns:1fr;gap:clamp(16px,2.5vw,32px)}
+.game{display:flex;flex-direction:column;border:2px solid var(--blue);background:var(--paper)}
+.game .head{position:relative;background:var(--blue);color:var(--paper);padding:14px 16px 12px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.game .head h3{font:400 26px/1 var(--dot)}
+.game .head .n{font:500 12px/1 var(--mono);letter-spacing:.14em}
+.new{position:absolute;top:-14px;right:12px;background:var(--yellow);color:var(--ink);border:2px solid var(--ink);padding:4px 10px;font:400 16px/1 var(--dot)}
+.game .shot{display:block;margin:12px;border:2px solid var(--blue);aspect-ratio:4/3;width:calc(100% - 24px);height:auto;object-fit:cover;object-position:center 22%;background:var(--ink);pointer-events:none}   /* a 10 s clip (the 4:3 window of the stage), its screenshot as poster */
+.game .line{padding:4px 16px 8px;font-size:14px;line-height:1.5;color:var(--ink)}
+.game .by{padding:0 16px 8px}
+.game .foot{margin:auto 12px 12px;border-top:2px solid var(--blue);padding-top:12px}
+.game .foot .btn{display:flex;width:100%;font-size:22px}
+.game.yours{border-style:dashed;opacity:.9}
+.game.yours .head{background:transparent;color:var(--blue);border-bottom:2px dashed var(--blue)}
+.game.yours .here{margin:12px;aspect-ratio:4/3;border:2px dashed var(--blue);display:flex;align-items:center;justify-content:center;font:400 22px/1.2 var(--dot);color:var(--blue);text-align:center;padding:20px}
+.game.yours .foot{border-top-style:dashed}
+.game.yours .foot .btn{font-size:clamp(15px,1.3vw,18px);padding:12px 10px;white-space:nowrap}
+
+/* 4. this week's jackpot */
+.jackpot{background:var(--blue);color:var(--paper)}
+.jackpot .grid{display:grid;grid-template-columns:1fr;gap:clamp(32px,5vw,80px)}
+.jackpot .lbl{color:var(--paper);opacity:.85}
+.jackpot h2{margin-top:16px;font-size:clamp(52px,8vw,120px);line-height:.88}
+.amount{display:inline-block;margin-top:22px;background:var(--yellow);color:var(--ink);font:400 clamp(34px,4.4vw,60px)/1 var(--dot);padding:10px 18px}
+.jackpot p.rule{margin-top:18px;font-size:15px;line-height:1.55;max-width:44ch}
+.count{margin-top:24px;border-top:2px solid var(--paper);padding-top:18px}
+.count .t{margin-top:8px;font:400 clamp(40px,6vw,76px)/1 var(--dot);letter-spacing:.04em}
+.boards{display:grid;grid-template-columns:1fr;border:2px solid var(--paper);align-self:start}
+.board + .board{border-top:2px solid var(--paper)}
+.board .bh{padding:14px 18px;border-bottom:2px solid var(--paper);display:flex;justify-content:space-between;gap:12px;font:400 22px/1 var(--dot)}
+.board .bh span:last-child{font:500 12px/1.6 var(--mono);letter-spacing:.14em;text-transform:uppercase;opacity:.85}
+.board .r{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid #FBF8EC66}
+.board .r:last-child{border-bottom:0}
+.board .r .k{font:400 22px/1 var(--dot);opacity:.7}
+.board .r .p{font:400 clamp(18px,2vw,24px)/1.15 var(--dot);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board .r .s{font:600 18px/1 var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.board .empty{padding:16px 18px;font-size:14px;opacity:.85}
+
+/* the holders' line under the games */
+.holders{margin-top:24px;font-size:14px;line-height:1.5;color:var(--ink)}
+
+/* 6. people of the wall: small, at the bottom; the scene at most 480 px high, beside the words on a wide screen */
+.people{border-top:2px solid var(--blue);padding-top:clamp(40px,5vw,72px);padding-bottom:clamp(40px,5vw,72px)}
+.people .two{display:grid;grid-template-columns:1fr;gap:clamp(24px,4vw,48px);align-items:start}
+.people h2{font-size:clamp(32px,4.5vw,56px);line-height:.9}
+.people .count{margin-top:12px}
+.people .count b{color:var(--ink);font-weight:600}
+.gate{margin-top:20px;display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.gate > div{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.gate .only,.gate .hint{font-size:15px;line-height:1.5;max-width:44ch}
+.gate .me{color:var(--blue);font-size:clamp(40px,6vw,72px);line-height:.9;overflow-wrap:anywhere}
+.gate .btn{font-size:22px;padding:12px 28px}
+.gate .btn:disabled{opacity:.6;cursor:wait}
+.gate .status:empty{display:none}
+.scene{border:2px solid var(--blue);padding:8px;background:var(--paper);width:100%;max-width:869px}
+.scene iframe{display:block;width:100%;aspect-ratio:16/9;max-height:480px;border:0;background:var(--ink)}
+.sprites{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;margin-top:24px;width:100%}
+.sprites:empty{display:none}
+.who{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border:2px solid var(--blue);text-align:center}
+.who .walk{width:72px;height:72px;background-repeat:no-repeat;background-size:288px 288px;background-position:0 -144px;image-rendering:pixelated;animation:walk .52s steps(4) infinite}
+@keyframes walk{from{background-position-x:0}to{background-position-x:-288px}}
+.who .nm{font:400 14px/1.1 var(--dot);color:var(--blue);overflow-wrap:anywhere}
+.who .pn{font:500 11px/1 var(--mono);letter-spacing:.14em;color:var(--grey)}
+.who .pn.guest{letter-spacing:.06em;font-style:italic}
+@media (prefers-reduced-motion:reduce){.who .walk{animation:none}}
+@media (min-width:980px){ .people .two{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)} }
+
+/* 5. create your own game: the live mosaic (320 px) and the words; on a phone the words first */
+.wall .two{display:flex;flex-direction:column-reverse;gap:clamp(28px,5vw,64px)}
+.wall .frame{width:min(320px,100%)}
+.wall .text{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.wall h2{font-size:clamp(40px,6vw,84px);line-height:.9;margin-bottom:6px}
+.wall .text p{font-size:15px;line-height:1.5;max-width:44ch}
+.wall .text b{font-weight:600}
+.wall .text .btn{margin-top:12px}
+.wall .text .own{margin-top:8px;font-size:13px;color:var(--grey)}
+#wallgrid{display:grid;grid-template-columns:repeat(25,1fr);gap:3px}
+#wallgrid div{aspect-ratio:1;border:1px dashed var(--blue);opacity:.55}
+#wallgrid div.m{background:var(--blue);border-style:solid;opacity:1}
+.wall .dragon{position:absolute;right:-18px;bottom:-2px;width:96px;pointer-events:none}
+footer{padding:28px var(--padx);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font:500 12px/1.4 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--grey);max-width:1280px;margin:0 auto}
+footer a{text-decoration:none}
+footer .stamp{border:2px solid var(--blue);color:var(--blue);padding:6px 10px}
+
+/* the (i) */
+dialog{width:min(520px,calc(100% - 32px));padding:0;border:2px solid var(--blue);background:var(--paper);color:var(--ink)}
+dialog::backdrop{background:rgba(20,22,31,.6)}
+.dlg-h{display:flex;justify-content:space-between;align-items:center;background:var(--blue);color:var(--paper);padding:10px 8px 10px 18px}
+.dlg-h h2{font:400 22px/1 var(--dot)}
+.dlg-h button{width:44px;height:44px;background:none;border:0;color:var(--paper);font:400 24px/1 var(--mono);cursor:pointer}
+.dlg-b{padding:18px;display:flex;flex-direction:column;gap:12px;font-size:15px;line-height:1.55}
+
+@media (max-width:719px){
+  .links{display:none}
+  .brand span{font-size:12px}
+}
+@media (min-width:720px){
+  .row{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (min-width:720px){ .wall .two{flex-direction:row;align-items:center} }
+@media (min-width:980px){
+  .hero{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr)}
+  .jackpot .grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media (min-width:1100px){ .row{grid-template-columns:repeat(4,minmax(0,1fr))} }
+</style>
+</head>
+<body>
+
+<dialog id="how" aria-labelledby="howTitle">
+  <div class="dlg-h"><h2 id="howTitle">How it works</h2><button type="button" id="howClose" aria-label="Close">×</button></div>
+  <div class="dlg-b">
+    <p>Every paid play goes straight into the jackpot. Every Friday it's split: half to the best scores, 40% to the artists, 10% to the wall.</p>
+    <p>50 plays for 0.005 ETH. Practice is free.</p>
+  </div>
+</dialog>
+
+<!-- 1. nav -->
+<nav>
+  <a class="brand" href="#top"><i></i><span>The Wall Arcade</span></a>
+  <div class="links"><a href="#games">Games</a><a href="#jackpot">Jackpot</a><a href="#artists">Artists</a><a href="#people">People</a></div>
+  <div class="navr">
+    <a class="btn" href="#games">PLAY</a>
+    <button class="info" id="infoBtn" type="button" aria-label="How it works" aria-haspopup="dialog">i</button>
+  </div>
+</nav>
+
+<!-- 2. hero -->
+<section class="hero wrap" id="top">
+  <div>
+    <p class="kicker">on the wall presents</p>
+    <h1 class="anton">The Wall Arcade</h1>
+    <p class="base"><span>Play arcade games built on the names of a real wall in Lisbon.</span><span>Every paid play feeds the jackpot.</span><span>Every Friday, the best score on each game wins.</span></p>
+    <div class="act">
+      <a class="btn" href="#games">PLAY <span>→</span></a>
+      <a class="btn dashed" href="./builders.html">CREATE MY OWN GAME <span>→</span></a>
+      <p class="lbl live"><i></i><span><b class="painted">—</b> names painted</span></p>
+    </div>
+  </div>
+  <div class="frame">
+    <video id="teaser" src="teaser-1x1.mp4" poster="teaser-poster.png" autoplay muted loop playsinline preload="metadata" aria-label="THE WALL ARCADE teaser"></video>
+    <button class="sound" id="sound" type="button" aria-pressed="false">SOUND OFF</button>
+  </div>
+</section>
+
+<!-- 3. the games -->
+<section class="games" id="games">
+  <div class="wrap">
+    <div class="sec-h"><h2 class="anton">The games</h2></div>
+    <div class="row" id="gameRow"><!--GAMES:START--><!--GAMES:END--></div>
+    <p class="holders">People of the wall: 3 free plays are in your wallet. Sign in with the wallet that holds your name.</p>
+  </div>
+</section>
+
+<!-- 4. this week's jackpot -->
+<section class="jackpot" id="jackpot">
+  <div class="wrap grid">
+    <div>
+      <p class="lbl" id="weekNo">Week 1</p>
+      <h2 class="anton">This week's<br>jackpot</h2>
+      <p class="amount" id="potAmount" aria-live="polite">— ETH</p>
+      <p class="rule">Every paid play goes straight into it. Every Friday it's split: half to the best scores, 40% to the artists, 10% to the wall.</p>
+      <div class="count"><p class="lbl">Reveal · Friday live</p><p class="t" id="countdown">—</p></div>
+    </div>
+    <div class="boards" id="boards"><!--BOARDS:START--><!--BOARDS:END--></div>
+  </div>
+</section>
+
+<!-- 5. create your own game (the nav's Artists), on the live wall; getting on the wall is the small link under it -->
+<section class="wall" id="artists">
+  <div class="wrap two">
+    <div class="frame">
+      <div id="wallgrid" aria-hidden="true"></div>
+      <img class="dragon" src="dragon.png" alt="">
+    </div>
+    <div class="text">
+      <h2 class="anton">Create your own game</h2>
+      <p><b class="painted">—</b> names painted by hand in Lisbon. Turn them into a game.</p>
+      <p>Copy one file, paste it into your AI, publish on SuperRare Studio. 40% of every play is yours.</p>
+      <a class="btn" href="./builders.html">CREATE MY OWN GAME <span>→</span></a>
+      <p class="own">Own a name: your ticket to NFC Summit 2027, and 3 free plays every week. <a href="https://onthewall.nfcsummit.com" target="_blank" rel="noopener">Get on the wall →</a> The wall closes Friday Oct 30.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6. people of the wall: the counter (every character of the event · those on the wall), ADD YOURSELF for a holder signed in with Connect (hub/people-gate.ts asks
+     the card service for a freshly signed capture link at the click; no link is ever in this page) or the SIGN IN line, the sprites of the wall, the Sprite Party scene -->
+<section class="people" id="people">
+  <div class="wrap two">
+    <div class="side">
+      <h2 class="anton">People of the wall</h2>
+      <p class="lbl count"><b id="peopleAll">—</b> <span id="peopleNoun">characters</span> · <b id="peopleOn">—</b> on the wall</p>
+      <div class="gate">
+        <div id="gateOut">
+          <p class="only">People of the wall only. Sign in with the wallet that holds your name.</p>
+          <button class="btn" id="signIn" type="button">SIGN IN</button>
+        </div>
+        <div id="gateIn" hidden>
+          <p class="me anton" id="myName"></p>
+          <button class="btn" id="addYourself" type="button">ADD YOURSELF <span>→</span></button>
+          <p class="hint" id="gateHint"></p>
+        </div>
+        <p class="lbl status" id="gateStatus" aria-live="polite"></p>
+      </div>
+      <div class="sprites" id="sprites"></div>
+    </div>
+    <div class="scene"><iframe src="https://www.spriteparty.com/p/sp_Fr4EW5t7XNjm0E_q/composition" title="People of the wall, walking" loading="lazy" allow="fullscreen"></iframe></div>
+  </div>
+</section>
+
+<footer>
+  <span>NFC Summit 2027 · Lisbon, May 27–29</span>
+  <a href="./assets.html">The Wall Kit →</a>
+  <a class="stamp" href="https://studio.superrare.com" target="_blank" rel="noopener">Built on SuperRare Studio</a>
+</footer>
+
+<script>
+/* games:start  THE GAMES, from the card service's games.json (cards/src/games.ts, the one list of the arcade's games): the
+   live ones in their order, then YOUR GAME HERE; NEW on the live game published last; each game's 10 s clip when the hub
+   has one for its slug (CLIPS, from hub/clips/ at build: made by hand), else the clip of its free practice made on the
+   Mac and kept by the card service (clip: npm run clip -- <slug>), else its capture. scripts/build-hub.ts evaluates this block to
+   draw the same HTML into the page at build time; the page redraws only if the live list differs. */
+var CARDS_SITE = 'https://wall-arcade-cards.netlify.app';
+function gEsc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function liveGames(games) {
+  return (Array.isArray(games) ? games : []).filter(function (g) {
+    return g && g.status === 'live' && /^https:\/\/[a-z0-9]+\.srstudio\.dev$/.test(g.origin) && /^[0-9a-f-]{36}$/.test(g.appId) && /^[a-z0-9-]+$/.test(g.slug);
+  }).sort(function (a, b) { return a.order - b.order; });
+}
+function gameCards(games, clips) {
+  var live = liveGames(games), pad = function (n) { return '#' + String(n).padStart(2, '0'); };
+  var dated = live.filter(function (g) { return g.publishedAt; }).sort(function (a, b) { return Date.parse(b.publishedAt) - Date.parse(a.publishedAt); });
+  var fresh = dated.length ? dated[0].appId : null;
+  return live.map(function (g, i) {
+    var title = gEsc(String(g.title).toUpperCase()), media;
+    if (clips.indexOf(g.slug) >= 0) media = '<video class="shot" src="clips/' + g.slug + '.mp4" poster="shots/' + g.slug + '.jpg" autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback aria-label="' + title + ', in play"></video>';
+    else if (g.clip && /^\/games\/[a-z0-9-]{1,64}\.mp4$/.test(g.clip)) media = '<video class="shot" src="' + CARDS_SITE + g.clip + '" poster="' + CARDS_SITE + g.clip.replace(/\.mp4$/, '.jpg') + '" autoplay muted loop playsinline preload="auto" disablepictureinpicture disableremoteplayback aria-label="' + title + ', in play"></video>';
+    else if (g.shot && /^\/games\/[0-9a-f-]{36}\.png$/.test(g.shot)) media = '<img class="shot" src="' + CARDS_SITE + g.shot + '" alt="' + title + ', in play" loading="lazy">';
+    else media = '<div class="shot" role="img" aria-label="' + title + '"></div>';
+    return '<article class="game"><div class="head"><h3>' + title + '</h3><span class="n">' + pad(i + 1) + '</span>' + (g.appId === fresh ? '<span class="new">NEW</span>' : '') + '</div>' +
+      media + '<p class="line">' + gEsc(g.line) + '</p><p class="by lbl">By ' + gEsc(g.artist && g.artist.name) + '</p>' +
+      '<div class="foot"><a class="btn" href="' + g.origin + '/" data-app="' + g.appId + '" target="_blank" rel="noopener">PLAY <span>→</span></a></div></article>';
+  }).join('') + '<article class="game yours"><div class="head"><h3>YOUR GAME HERE</h3><span class="n">' + pad(live.length + 1) + '</span></div>' +
+    '<div class="here">YOUR GAME HERE</div><div class="foot"><a class="btn dashed" href="./builders.html">CREATE MY OWN GAME <span>→</span></a></div></article>';
+}
+function gameBoards(games) {
+  return liveGames(games).map(function (g) {
+    return '<div class="board" data-game="' + g.slug + '"><div class="bh"><span>' + gEsc(String(g.title).toUpperCase()) + '</span><span>Top 3</span></div><p class="empty">Loading…</p></div>';
+  }).join('');
+}
+/* games:end */
+var GAMES = /*GAMES:START*/[]/*GAMES:END*/, CLIPS = /*CLIPS:START*/[]/*CLIPS:END*/;
+function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+/* ---- the wall: the snapshot inlined by scripts/build-hub.ts (0 = waiting, 1 or "NAME" = painted), then the live /positions ---- */
+var SNAPSHOT = /*SNAPSHOT:START*/[]/*SNAPSHOT:END*/;
+var grid = SNAPSHOT.map(function (v) { return { minted: Boolean(v), name: typeof v === 'string' ? v : '' }; });
+function paintWall() {
+  var html = '', painted = 0;
+  grid.forEach(function (c) { if (c.minted) painted++; html += '<div class="' + (c.minted ? 'm' : '') + '" title="' + esc(c.minted ? (c.name || 'painted') : 'waiting') + '"></div>'; });
+  document.getElementById('wallgrid').innerHTML = html;
+  Array.prototype.forEach.call(document.querySelectorAll('.painted'), function (b) { b.textContent = painted; });
+}
+paintWall();
+try {
+  fetch('https://otw-arcade.netlify.app/positions').then(function (r) { return r.json(); }).then(function (d) {
+    if (!Array.isArray(d) || !d.length) return;
+    grid = d.filter(function (x) { return x.tier === 'name' || x.tier === 'pfp'; }).sort(function (a, b) { return a.position - b.position; })
+      .map(function (x) { return { minted: Boolean(x.minted), name: x.name || '' }; });
+    paintWall();
+  }).catch(function () {});
+} catch (e) {}
+
+/* ---- the teaser: autoplay, muted, looping; one button for the sound ---- */
+var teaser = document.getElementById('teaser'), sound = document.getElementById('sound');
+sound.onclick = function () {
+  teaser.muted = !teaser.muted;
+  if (!teaser.muted) { var p = teaser.play(); if (p && p.catch) p.catch(function () {}); }
+  sound.textContent = teaser.muted ? 'SOUND OFF' : 'SOUND ON';
+  sound.setAttribute('aria-pressed', String(!teaser.muted));
+};
+
+/* week:start  THIS WEEK = Friday 15:00 Lisbon -> next Friday 15:00 Lisbon; week 1 runs from Thursday 22 October 2026
+   00:00 to Friday 30 October 15:00 Lisbon (same as src/shell/week.ts, pinned by tests/week.test.ts which evaluates this
+   block). Sent to each game as ?from=&to= (UTC instants, [from, to)). */
+function lisbonWeek(now) {
+  var DAY = 86400000, fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+  function parts(t) {
+    var o = {}; fmt.formatToParts(new Date(t)).forEach(function (p) { o[p.type] = Number(p.value); });
+    return { y: o.year, m: o.month, d: o.day, hh: o.hour, mm: o.minute, weekday: new Date(Date.UTC(o.year, o.month - 1, o.day)).getUTCDay() };
+  }
+  function toUtc(y, m, d, hh) {
+    var wall = Date.UTC(y, m - 1, d, hh), guess = wall;
+    for (var i = 0; i < 2; i++) { var p = parts(guess); guess += wall - Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mm); }
+    return guess;
+  }
+  var firstTo = toUtc(2026, 10, 30, 15);
+  if (now < firstTo) return { from: new Date(toUtc(2026, 10, 22, 0)).toISOString(), to: new Date(firstTo).toISOString() };
+  var p = parts(now), back = (p.weekday - 5 + 7) % 7, friday = new Date(Date.UTC(p.y, p.m - 1, p.d) - back * DAY);
+  var from = toUtc(friday.getUTCFullYear(), friday.getUTCMonth() + 1, friday.getUTCDate(), 15);
+  if (from > now) { var prev = new Date(friday.getTime() - 7 * DAY); from = toUtc(prev.getUTCFullYear(), prev.getUTCMonth() + 1, prev.getUTCDate(), 15); }
+  var s = parts(from), next = new Date(Date.UTC(s.y, s.m - 1, s.d) + 7 * DAY);
+  return { from: new Date(from).toISOString(), to: new Date(toUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), 15)).toISOString() };
+}
+/* week:end */
+
+/* ---- this week's jackpot: the card service's /pot (the treasury's balance, cards/src/pot.ts), "— ETH" if unread;
+   the week's number and the countdown to its end (Friday 15:00 Lisbon) ---- */
+var week = lisbonWeek(Date.now());
+var FIRST_FROM = '2026-10-21T23:00:00.000Z', FIRST_TO = Date.parse('2026-10-30T15:00:00.000Z');
+document.getElementById('weekNo').textContent = 'Week ' + (week.from === FIRST_FROM ? 1 : 2 + Math.round((Date.parse(week.from) - FIRST_TO) / 6048e5));
+try {
+  fetch('https://wall-arcade-cards.netlify.app/pot').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (d) {
+    if (d && typeof d.pot === 'string' && /^\d+\.\d{4}$/.test(d.pot)) document.getElementById('potAmount').textContent = d.pot + ' ETH';
+  }).catch(function () {});
+} catch (e) {}
+function tick() {
+  var left = Math.max(0, Date.parse(week.to) - Date.now()), z = function (v) { return String(v).padStart(2, '0'); };
+  document.getElementById('countdown').textContent = Math.floor(left / 864e5) + 'D ' + z(Math.floor(left % 864e5 / 36e5)) + ':' + z(Math.floor(left % 36e5 / 6e4)) + ':' + z(Math.floor(left % 6e4 / 1e3));
+}
+tick(); setInterval(tick, 1000);
+
+/* ---- the week's top 3 of each game, read-only and public from each game's own origin (the same data as the games) ---- */
+function shortPlayer(p) { if (p && p.ensName) return String(p.ensName).slice(0, 28); var n = (p && p.displayName) || ''; return /^0x[0-9a-f]{40}$/i.test(n) ? n.slice(0, 6) + '…' + n.slice(-4) : n.slice(0, 18); }
+function loadBoards(games) {
+  liveGames(games).forEach(function (g) {
+    var box = document.querySelector('.board[data-game="' + g.slug + '"]');
+    if (!box) return;
+    var empty = function () { var e = box.querySelector('.empty'); if (e) e.textContent = 'No scores yet. Be the first.'; };
+    fetch(g.origin + '/api/v1/games/' + g.appId + '/scoring/leaderboard?from=' + encodeURIComponent(week.from) + '&to=' + encodeURIComponent(week.to))
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (d) {
+        var entries = (d && d.entries) || [], e = box.querySelector('.empty');
+        if (!entries.length) { empty(); return; }
+        if (e) e.outerHTML = entries.slice(0, 3).map(function (x) {
+          return '<div class="r"><span class="k">' + esc(String(x.rank).padStart(2, '0')) + '</span><span class="p">' + esc(shortPlayer(x.player)) + '</span><span class="s">' + esc(x.score) + '</span></div>';
+        }).join('');
+      }).catch(empty);
+  });
+}
+loadBoards(GAMES);
+/* the live list: the page was drawn from the list as it was at build; a game put on the hub since (or hidden, or moved)
+   is drawn now, with no new build of the hub */
+try {
+  fetch(CARDS_SITE + '/games.json').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (games) {
+    if (!liveGames(games).length || gameCards(games, CLIPS) + gameBoards(games) === gameCards(GAMES, CLIPS) + gameBoards(GAMES)) return;
+    GAMES = games;
+    document.getElementById('gameRow').innerHTML = gameCards(games, CLIPS);
+    document.getElementById('boards').innerHTML = gameBoards(games);
+    loadBoards(games);
+  }).catch(function () {});
+} catch (e) {}
+
+/* ---- the people of the wall: the card service's people/all.json (every sprite of the Sprite Party event, newest first:
+   one matched to a name of the wall with that name and its panel, any other as a guest under its Sprite Party name);
+   a sprite sheet is 4 × 4 frames of 48 px, row 2 faces us, 4 steps of 130 ms ---- */
+try {
+  fetch('https://wall-arcade-cards.netlify.app/people/all.json').then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (all) {
+    if (!Array.isArray(all)) return;
+    var shown = all.filter(function (c) { return c && c.sprite && /^https:\/\/wall-arcade-cards\.netlify\.app\/people\/sprites\/[0-9a-f-]{36}\.png$/.test(c.sprite.url); });
+    document.getElementById('peopleAll').textContent = shown.length;
+    document.getElementById('peopleNoun').textContent = shown.length === 1 ? 'character' : 'characters';
+    document.getElementById('peopleOn').textContent = shown.filter(function (c) { return !c.guest; }).length;
+    document.getElementById('sprites').innerHTML = shown.map(function (c) {
+      return '<div class="who"><div class="walk" style="background-image:url(' + c.sprite.url + ')" role="img" aria-label="' + esc(c.name) + '"></div>' +
+        '<span class="nm">' + esc(c.name) + '</span>' + (c.guest ? '<span class="pn guest">guest</span>' : '<span class="pn">#' + esc(c.panel) + '</span>') + '</div>';
+    }).join('');
+  }).catch(function () {});
+} catch (e) {}
+
+/* ---- the (i) ---- */
+var how = document.getElementById('how');
+document.getElementById('infoBtn').onclick = function () { if (how.showModal) how.showModal(); else how.setAttribute('open', ''); };
+document.getElementById('howClose').onclick = function () { if (how.close) how.close(); else how.removeAttribute('open'); };
+how.addEventListener('click', function (e) { if (e.target === how && how.close) how.close(); });   // a tap on the backdrop
+</script>
+<script>
+/* the PEOPLE gate (people-gate.js, with the Connect SDK, ~500 KB) loads only when the section comes near */
+(function () {
+  var people = document.getElementById('people'), load = function () { var s = document.createElement('script'); s.type = 'module'; s.src = 'people-gate.js'; document.body.appendChild(s); };
+  if (!('IntersectionObserver' in window)) { load(); return; }
+  var seen = new IntersectionObserver(function (entries) { if (entries.some(function (e) { return e.isIntersecting; })) { seen.disconnect(); load(); } }, { rootMargin: '600px 0px' });
+  seen.observe(people);
+})();
+</script>
+<script src="./tag.js" data-view="hub_view"></script>
+</body>
+</html>
